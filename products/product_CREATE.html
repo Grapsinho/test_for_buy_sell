@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Create Product via JSON</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+      }
+      form > div {
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.3rem;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 0.5rem;
+        box-sizing: border-box;
+      }
+      /* Thumbnail preview styling */
+      #preview {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+      }
+      .thumb {
+        width: 100px;
+        height: 100px;
+        object-fit: cover;
+        cursor: pointer;
+        border: 2px solid transparent;
+      }
+      .thumb.featured {
+        border-color: blue;
+      }
+      /* Category buttons */
+      .cat-button {
+        padding: 8px 12px;
+        margin: 4px;
+        border: 1px solid #ccc;
+        background-color: #f9f9f9;
+        cursor: pointer;
+      }
+      .cat-button.selected {
+        background-color: #007bff;
+        color: white;
+      }
+      #parent-categories,
+      #child-categories {
+        margin-bottom: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Create a New Product</h1>
+    <form id="product-form">
+      <div>
+        <label for="name">Product Name:</label>
+        <input type="text" id="name" name="name" required />
+      </div>
+      <div>
+        <label for="description">Description:</label>
+        <textarea
+          id="description"
+          name="description"
+          rows="4"
+          required
+        ></textarea>
+      </div>
+      <div>
+        <label for="price">Price:</label>
+        <input type="number" id="price" name="price" step="0.01" required />
+      </div>
+      <div>
+        <label for="stock">Stock:</label>
+        <input type="number" id="stock" name="stock" required />
+      </div>
+      <div>
+        <label for="condition">Condition:</label>
+        <select id="condition" name="condition" required>
+          <option value="new">New</option>
+          <option value="used">Used</option>
+          <option value="refurbished">Refurbished</option>
+        </select>
+      </div>
+
+      <!-- Category Selection UI -->
+      <div>
+        <strong>Select Parent Category:</strong>
+        <div id="parent-categories"></div>
+      </div>
+      <div id="child-category-container" style="display: none">
+        <strong>Select Child Category:</strong>
+        <div id="child-categories"></div>
+      </div>
+      <!-- Hidden input to store chosen child category's ID -->
+      <input type="hidden" id="category" name="category" required />
+
+      <div>
+        <label for="images"
+          >Upload Images (Hold Ctrl/Command for multiple):</label
+        >
+        <input
+          type="file"
+          id="images"
+          name="images"
+          accept="image/*"
+          multiple
+        />
+      </div>
+
+      <!-- Container for thumbnail previews -->
+      <div id="preview"></div>
+
+      <button type="submit">Create Product</button>
+    </form>
+
+    <div id="response" style="margin-top: 2rem; white-space: pre-wrap"></div>
+
+    <script>
+      // API Endpoints
+      const API_PRODUCTS = "http://127.0.0.1:8000/products/shop/items/";
+      const API_PARENT_CATEGORIES =
+        "http://127.0.0.1:8000/products/parent/categories/";
+      const API_CATEGORY_DETAIL = "http://127.0.0.1:8000/products/categories/";
+
+      // Global variables for image handling
+      let selectedFeaturedIndex = 0;
+      let base64ImagesArr = [];
+
+      // Global variable for category selection (child category must be chosen)
+      let selectedChildCategoryId = null;
+
+      // Function to read a File and return a Promise that resolves with its base64 string.
+      function readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64result = reader.result.split(",")[1];
+            resolve(base64result);
+          };
+          reader.onerror = (error) => reject(error);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      // Generate thumbnails and allow featured image selection
+      function generateThumbnails(files) {
+        const previewContainer = document.getElementById("preview");
+        previewContainer.innerHTML = "";
+        base64ImagesArr = [];
+
+        const filePromises = [];
+        for (let i = 0; i < files.length; i++) {
+          filePromises.push(readFileAsBase64(files[i]));
+        }
+
+        Promise.all(filePromises)
+          .then((base64Results) => {
+            base64ImagesArr = base64Results;
+            base64Results.forEach((base64String, index) => {
+              const img = document.createElement("img");
+              img.src = "data:image/*;base64," + base64String;
+              img.classList.add("thumb");
+              if (index === selectedFeaturedIndex) {
+                img.classList.add("featured");
+              }
+              img.addEventListener("click", function () {
+                selectedFeaturedIndex = index;
+                document.querySelectorAll(".thumb").forEach((el, idx) => {
+                  el.classList.toggle("featured", idx === index);
+                });
+              });
+              previewContainer.appendChild(img);
+            });
+          })
+          .catch((err) => {
+            console.error("Error processing image files:", err);
+          });
+      }
+
+      // Fetch and display parent categories
+      function loadParentCategories() {
+        fetch(API_PARENT_CATEGORIES)
+          .then((response) => response.json())
+          .then((data) => {
+            const parentContainer =
+              document.getElementById("parent-categories");
+            parentContainer.innerHTML = "";
+            data.forEach((cat) => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.classList.add("cat-button");
+              btn.textContent = cat.name;
+              btn.dataset.slug = cat.slug;
+              btn.addEventListener("click", () => {
+                // Highlight the selected parent and clear any previous child selection
+                document
+                  .querySelectorAll("#parent-categories .cat-button")
+                  .forEach((el) => el.classList.remove("selected"));
+                btn.classList.add("selected");
+                loadChildCategories(btn.dataset.slug);
+              });
+              parentContainer.appendChild(btn);
+            });
+          })
+          .catch((error) =>
+            console.error("Error loading parent categories:", error)
+          );
+      }
+
+      // Fetch and display child categories for the selected parent
+      function loadChildCategories(parentSlug) {
+        // Show container in case it was hidden
+        document.getElementById("child-category-container").style.display =
+          "block";
+        // Clear previous child buttons
+        const childContainer = document.getElementById("child-categories");
+        childContainer.innerHTML = "";
+        // Reset selected child category
+        selectedChildCategoryId = null;
+        document.getElementById("category").value = "";
+
+        fetch(API_CATEGORY_DETAIL + parentSlug + "/")
+          .then((response) => response.json())
+          .then((data) => {
+            // data.children should contain the child categories
+            if (data.children && data.children.length > 0) {
+              data.children.forEach((child) => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.classList.add("cat-button");
+                btn.textContent = child.name;
+                btn.dataset.id = child.id; // store the child's id
+                btn.addEventListener("click", () => {
+                  // Highlight the selected child and store its ID in the hidden field
+                  document
+                    .querySelectorAll("#child-categories .cat-button")
+                    .forEach((el) => el.classList.remove("selected"));
+                  btn.classList.add("selected");
+                  selectedChildCategoryId = child.id;
+                  document.getElementById("category").value = child.id;
+                });
+                childContainer.appendChild(btn);
+              });
+            } else {
+              // If there are no children, hide the child category container and clear selection.
+              document.getElementById(
+                "child-category-container"
+              ).style.display = "none";
+            }
+          })
+          .catch((error) =>
+            console.error("Error loading child categories:", error)
+          );
+      }
+
+      // Listen for file input change to generate thumbnails.
+      document
+        .getElementById("images")
+        .addEventListener("change", function (e) {
+          const files = e.target.files;
+          if (files.length > 0) {
+            generateThumbnails(files);
+          }
+        });
+
+      // Form submission for product creation
+      document
+        .getElementById("product-form")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          // Check that a child category has been selected.
+          if (!selectedChildCategoryId) {
+            alert("Please select a child category.");
+            return;
+          }
+
+          const name = document.getElementById("name").value;
+          const description = document.getElementById("description").value;
+          const price = document.getElementById("price").value;
+          const stock = document.getElementById("stock").value;
+          const condition = document.getElementById("condition").value;
+          const category = parseInt(
+            document.getElementById("category").value,
+            10
+          );
+
+          const imagesArr = [];
+          const filesInput = document.getElementById("images").files;
+          if (filesInput.length > 0 && base64ImagesArr.length > 0) {
+            base64ImagesArr.forEach((base64String, index) => {
+              imagesArr.push({
+                image: base64String,
+                is_feature: index === selectedFeaturedIndex,
+              });
+            });
+          } else {
+            imagesArr.push({
+              image: "",
+              is_feature: false,
+            });
+          }
+
+          const payload = {
+            name: name,
+            description: description,
+            price: price,
+            stock: stock,
+            condition: condition,
+            category: category, // This is the child category's ID
+            images: imagesArr,
+          };
+
+          try {
+            const response = await fetch(API_PRODUCTS, {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(payload),
+            });
+
+            const result = await response.json();
+            document.getElementById("response").innerText = JSON.stringify(
+              result,
+              null,
+              2
+            );
+          } catch (error) {
+            console.error("Error during product creation:", error);
+            document.getElementById("response").innerText =
+              "An error occurred. Check console for details.";
+          }
+        });
+
+      // Initial load: fetch parent categories.
+      window.addEventListener("DOMContentLoaded", () => {
+        loadParentCategories();
+      });
+    </script>
+  </body>
+</html>
