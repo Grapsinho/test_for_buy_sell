@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Update Product</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+      }
+      form > div {
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.3rem;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 0.5rem;
+        box-sizing: border-box;
+      }
+      /* Category buttons */
+      .cat-button {
+        padding: 8px 12px;
+        margin: 4px;
+        border: 1px solid #ccc;
+        background-color: #f9f9f9;
+        cursor: pointer;
+      }
+      .cat-button.selected {
+        background-color: #007bff;
+        color: white;
+      }
+      #parent-categories,
+      #child-categories {
+        margin-bottom: 1rem;
+      }
+      /* Thumbnails */
+      #preview {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+      }
+      .thumb {
+        width: 100px;
+        height: 100px;
+        object-fit: cover;
+        cursor: pointer;
+        position: relative;
+        border: 2px solid transparent;
+      }
+      .thumb.featured {
+        border-color: blue;
+      }
+      .remove-btn {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        background: rgba(255, 0, 0, 0.8);
+        color: white;
+        border: none;
+        font-size: 12px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Update Product</h1>
+    <form id="product-form">
+      <!-- Text fields -->
+      <div>
+        <label for="name">Product Name:</label>
+        <input type="text" id="name" name="name" required />
+      </div>
+      <div>
+        <label for="description">Description:</label>
+        <textarea
+          id="description"
+          name="description"
+          rows="4"
+          required
+        ></textarea>
+      </div>
+      <div>
+        <label for="price">Price:</label>
+        <input type="number" id="price" name="price" step="0.01" required />
+      </div>
+      <div>
+        <label for="stock">Stock:</label>
+        <input type="number" id="stock" name="stock" required />
+      </div>
+      <div>
+        <label for="condition">Condition:</label>
+        <select id="condition" name="condition" required>
+          <option value="new">New</option>
+          <option value="used">Used</option>
+          <option value="refurbished">Refurbished</option>
+        </select>
+      </div>
+
+      <!-- Category selection -->
+      <div>
+        <strong>Select Parent Category:</strong>
+        <div id="parent-categories"></div>
+      </div>
+      <div id="child-category-container" style="display: none">
+        <strong>Select Child Category:</strong>
+        <div id="child-categories"></div>
+      </div>
+      <input type="hidden" id="category" name="category" required />
+
+      <!-- Image upload -->
+      <div>
+        <label for="images">
+          Upload New Images (Hold Ctrl/Command for multiple):
+        </label>
+        <input
+          type="file"
+          id="images"
+          name="images"
+          accept="image/*"
+          multiple
+        />
+      </div>
+      <div id="preview"></div>
+
+      <button type="submit">Update Product</button>
+    </form>
+
+    <div id="response" style="margin-top: 2rem; white-space: pre-wrap"></div>
+
+    <script>
+      // API endpoints
+      const API_BASE = "http://127.0.0.1:8000";
+      // Product detail for GET & update (PUT) endpoints. Slug is appended.
+      let productSlug = "mobile-phone-updated-23-0c8dbf";
+      const API_PRODUCT_DETAIL = `${API_BASE}/products/shop/items/${productSlug}/?edit=true`;
+      const API_PARENT_CATEGORIES = `${API_BASE}/products/parent/categories/`;
+      const API_CATEGORY_DETAIL = `${API_BASE}/products/categories/`; // e.g. /categories/<slug>/
+
+      // Global images array:
+      // new images: { image: File, is_feature: boolean, existing: false }
+      // existing images: { id: number, image: URL, is_feature: boolean, existing: true }
+      let imagesArr = [];
+      let selectedFeaturedIndex = 0;
+      let selectedChildCategoryId = null;
+
+      // Preview existing product data
+      async function loadProductDetail() {
+        try {
+          const res = await fetch(API_PRODUCT_DETAIL);
+          const product = await res.json();
+          document.getElementById("name").value = product.name;
+          document.getElementById("description").value = product.description;
+          document.getElementById("price").value = product.price;
+          document.getElementById("stock").value = product.stock;
+          document.getElementById("condition").value = product.condition;
+          selectedChildCategoryId = product.category;
+          document.getElementById("category").value = product.category;
+          loadParentCategories(product.category_parent_slug);
+          loadChildCategories(product.category_parent_slug, product.category);
+
+          if (product.images && product.images.length > 0) {
+            imagesArr = product.images.map((img) => ({
+              id: img.id,
+              image: img.image, // existing image URL
+              is_feature: img.is_feature,
+              existing: true,
+            }));
+            const featIdx = imagesArr.findIndex((img) => img.is_feature);
+            selectedFeaturedIndex = featIdx >= 0 ? featIdx : 0;
+            renderThumbnails();
+          }
+        } catch (error) {
+          console.error("Error loading product detail:", error);
+        }
+      }
+
+      function loadParentCategories(currentParentSlug) {
+        fetch(API_PARENT_CATEGORIES)
+          .then((res) => res.json())
+          .then((data) => {
+            const container = document.getElementById("parent-categories");
+            container.innerHTML = "";
+            data.forEach((cat) => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.classList.add("cat-button");
+              btn.textContent = cat.name;
+              btn.dataset.slug = cat.slug;
+              if (cat.slug === currentParentSlug) {
+                btn.classList.add("selected");
+              }
+              btn.addEventListener("click", () => {
+                document
+                  .querySelectorAll("#parent-categories .cat-button")
+                  .forEach((el) => el.classList.remove("selected"));
+                btn.classList.add("selected");
+                loadChildCategories(btn.dataset.slug);
+              });
+              container.appendChild(btn);
+            });
+          })
+          .catch((err) =>
+            console.error("Error loading parent categories:", err)
+          );
+      }
+
+      function loadChildCategories(parentSlug, currentChildId = null) {
+        document.getElementById("child-category-container").style.display =
+          "block";
+        const container = document.getElementById("child-categories");
+        container.innerHTML = "";
+        selectedChildCategoryId = null;
+        document.getElementById("category").value = "";
+        fetch(API_CATEGORY_DETAIL + parentSlug + "/")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.children && data.children.length > 0) {
+              data.children.forEach((child) => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.classList.add("cat-button");
+                btn.textContent = child.name;
+                btn.dataset.id = child.id;
+                if (currentChildId && child.id == currentChildId) {
+                  btn.classList.add("selected");
+                  selectedChildCategoryId = child.id;
+                  document.getElementById("category").value = child.id;
+                }
+                btn.addEventListener("click", () => {
+                  document
+                    .querySelectorAll("#child-categories .cat-button")
+                    .forEach((el) => el.classList.remove("selected"));
+                  btn.classList.add("selected");
+                  selectedChildCategoryId = child.id;
+                  document.getElementById("category").value = child.id;
+                });
+                container.appendChild(btn);
+              });
+            } else {
+              document.getElementById(
+                "child-category-container"
+              ).style.display = "none";
+            }
+          })
+          .catch((err) =>
+            console.error("Error loading child categories:", err)
+          );
+      }
+
+      function renderThumbnails() {
+        const preview = document.getElementById("preview");
+        preview.innerHTML = "";
+        imagesArr.forEach((imgObj, index) => {
+          const div = document.createElement("div");
+          div.style.position = "relative";
+          const img = document.createElement("img");
+          if (imgObj.existing) {
+            img.src = imgObj.image;
+          } else {
+            img.src = URL.createObjectURL(imgObj.image);
+          }
+          img.classList.add("thumb");
+          if (index === selectedFeaturedIndex) {
+            img.classList.add("featured");
+          }
+          img.addEventListener("click", () => {
+            selectedFeaturedIndex = index;
+            document.querySelectorAll(".thumb").forEach((el, idx) => {
+              el.classList.toggle("featured", idx === index);
+            });
+          });
+          div.appendChild(img);
+          const removeBtn = document.createElement("button");
+          removeBtn.textContent = "×";
+          removeBtn.classList.add("remove-btn");
+          removeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            imagesArr.splice(index, 1);
+            if (selectedFeaturedIndex >= imagesArr.length) {
+              selectedFeaturedIndex = imagesArr.length - 1;
+            }
+            renderThumbnails();
+          });
+          div.appendChild(removeBtn);
+          preview.appendChild(div);
+        });
+      }
+
+      // Capture newly selected images.
+      document
+        .getElementById("images")
+        .addEventListener("change", function (e) {
+          const files = e.target.files;
+          if (files.length > 0) {
+            // Add each new file to imagesArr as new images.
+            for (let i = 0; i < files.length; i++) {
+              imagesArr.push({
+                image: files[i],
+                is_feature: false,
+                existing: false,
+              });
+            }
+            renderThumbnails();
+          }
+        });
+
+      // Submit the updated product form.
+      document
+        .getElementById("product-form")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+          if (!selectedChildCategoryId) {
+            alert("Please select a child category.");
+            return;
+          }
+          const name = document.getElementById("name").value;
+          const description = document.getElementById("description").value;
+          const price = document.getElementById("price").value;
+          const stock = document.getElementById("stock").value;
+          const condition = document.getElementById("condition").value;
+          const category = document.getElementById("category").value;
+
+          let formData = new FormData();
+          formData.append("name", name);
+          formData.append("description", description);
+          formData.append("price", price);
+          formData.append("stock", stock);
+          formData.append("condition", condition);
+          formData.append("category", category);
+
+          // Build the images metadata array.
+          let imagesMetadata = [];
+          let newIndex = 0; // new image counter
+          imagesArr.forEach((imgObj, globalIndex) => {
+            if (imgObj.existing) {
+              imagesMetadata.push({
+                id: imgObj.id,
+                is_feature: globalIndex === selectedFeaturedIndex,
+              });
+            } else {
+              imagesMetadata.push({
+                index: newIndex,
+                is_feature: globalIndex === selectedFeaturedIndex,
+              });
+              newIndex++;
+            }
+          });
+          formData.append("images_metadata", JSON.stringify(imagesMetadata));
+
+          // Append new images only if there are any.
+          const newImages = imagesArr.filter((img) => !img.existing);
+          if (newImages.length > 0) {
+            newImages.forEach((imgObj) => {
+              formData.append("images", imgObj.image);
+            });
+          }
+
+          try {
+            const response = await fetch(API_PRODUCT_DETAIL, {
+              method: "PUT",
+              credentials: "include",
+              body: formData,
+            });
+            const result = await response.json();
+            document.getElementById("response").innerText = JSON.stringify(
+              result,
+              null,
+              2
+            );
+          } catch (error) {
+            console.error("Error during product update:", error);
+            document.getElementById("response").innerText =
+              "An error occurred. Check console for details.";
+          }
+        });
+
+      window.addEventListener("DOMContentLoaded", () => {
+        if (!productSlug) {
+          alert("Product slug not provided in query string.");
+          return;
+        }
+        loadProductDetail();
+      });
+    </script>
+  </body>
+</html>
