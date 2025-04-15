@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Product Filter Demo</title>
+    <title>Product Filter & Search Demo</title>
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -43,16 +43,43 @@
         margin-bottom: 10px;
         padding-bottom: 10px;
       }
+      input[type="text"],
+      input[type="number"],
+      select {
+        width: 100%;
+        padding: 4px;
+        margin-top: 5px;
+        margin-bottom: 10px;
+      }
+      .search-mode {
+        margin-bottom: 10px;
+      }
+      .search-mode label {
+        margin-right: 10px;
+      }
     </style>
   </head>
   <body>
-    <!-- Sidebar for Categories and Filters -->
+    <!-- Sidebar for Categories, Filters & Search -->
     <div id="sidebar">
       <h3>Categories</h3>
       <div id="parent-categories">
         <div class="category-item" data-slug="">All</div>
       </div>
       <div id="child-categories"></div>
+      <hr />
+      <h3>Search</h3>
+      <div class="filter-group">
+        <label for="search_query">Search Query:</label>
+        <input type="text" id="search_query" placeholder="Enter search text" />
+      </div>
+      <!-- Mode toggle: one search bar; mode can be 'product' or 'owner' -->
+      <div class="search-mode">
+        <label>
+          <input type="radio" name="mode" value="product" checked /> Products
+        </label>
+        <label> <input type="radio" name="mode" value="owner" /> Owners </label>
+      </div>
       <hr />
       <h3>Filters</h3>
       <div class="filter-group">
@@ -79,8 +106,7 @@
           <option value="">Any</option>
           <option value="new">New</option>
           <option value="used">Used</option>
-          <option value="refurbished">refurbished</option>
-          <!-- Add more condition options if needed -->
+          <option value="refurbished">Refurbished</option>
         </select>
       </div>
       <button id="apply-filters">Apply Filters</button>
@@ -93,7 +119,7 @@
     </div>
 
     <script>
-      // Base API URLs: adjust if needed
+      // Base API URLs.
       const API_PRODUCTS = "http://127.0.0.1:8000/products/shop/items/";
       const API_PARENT_CATEGORIES =
         "http://127.0.0.1:8000/products/parent/categories/";
@@ -102,7 +128,11 @@
       // Keep track of the selected category slug (if any)
       let selectedCategorySlug = "";
 
-      // Load parent categories on page load
+      // Debounce timer for search inputs.
+      let searchDebounceTimer = null;
+      const DEBOUNCE_DELAY = 300; // milliseconds
+
+      // Load parent categories on page load.
       function loadParentCategories() {
         fetch(API_PARENT_CATEGORIES)
           .then((response) => response.json())
@@ -117,14 +147,14 @@
               item.dataset.slug = cat.slug;
               item.addEventListener("click", () => {
                 selectedCategorySlug = item.dataset.slug;
-                // Highlight the selection (simple style)
+                // Highlight the selection.
                 document
                   .querySelectorAll("#parent-categories .category-item")
                   .forEach((el) => (el.style.fontWeight = "normal"));
                 item.style.fontWeight = "bold";
-                // Load child categories for the selected parent
+                // Load child categories for the selected parent.
                 loadChildCategories(selectedCategorySlug);
-                // Trigger product filtering with the parent category
+                // Trigger product filtering with the selected category.
                 filterProducts();
               });
               parentContainer.appendChild(item);
@@ -135,7 +165,7 @@
           );
       }
 
-      // Load child categories for a given parent slug
+      // Load child categories for a given parent slug.
       function loadChildCategories(parentSlug) {
         fetch(API_CATEGORY_DETAIL + parentSlug + "/")
           .then((response) => response.json())
@@ -150,15 +180,14 @@
                 childItem.textContent = child.name;
                 childItem.dataset.slug = child.slug;
                 childItem.addEventListener("click", (e) => {
-                  // prevent triggering parent's click event
-                  e.stopPropagation();
+                  e.stopPropagation(); // Prevent parent's event.
                   selectedCategorySlug = childItem.dataset.slug;
-                  // Highlight the child item
+                  // Highlight the child item.
                   document
                     .querySelectorAll("#child-categories .category-item")
                     .forEach((el) => (el.style.fontWeight = "normal"));
                   childItem.style.fontWeight = "bold";
-                  // Trigger product filtering with the child category
+                  // Trigger product filtering with the child category.
                   filterProducts();
                 });
                 childContainer.appendChild(childItem);
@@ -170,14 +199,23 @@
           );
       }
 
-      // Fetch filtered products based on filters and category
+      // Fetch filtered products based on search, filters, and category.
       function filterProducts() {
+        // Read search text.
+        const searchQuery = document
+          .getElementById("search_query")
+          .value.trim();
+        // Read search mode from the selected radio button.
+        const mode = document.querySelector('input[name="mode"]:checked').value;
         const priceMin = document.getElementById("price_min").value;
         const priceMax = document.getElementById("price_max").value;
         const condition = document.getElementById("condition").value;
 
-        // Build query parameters based on user input
+        // Build query parameters.
         let queryParams = [];
+        if (searchQuery)
+          queryParams.push("q=" + encodeURIComponent(searchQuery));
+        if (mode) queryParams.push("mode=" + encodeURIComponent(mode));
         if (priceMin)
           queryParams.push("price_min=" + encodeURIComponent(priceMin));
         if (priceMax)
@@ -189,6 +227,7 @@
             "category=" + encodeURIComponent(selectedCategorySlug)
           );
 
+        // Construct the full URL with query parameters.
         const url = API_PRODUCTS + "?" + queryParams.join("&");
 
         fetch(url)
@@ -197,20 +236,19 @@
             const productList = document.getElementById("product-list");
             productList.innerHTML = "";
             if (data.results && data.results.length > 0) {
-              console.log(data.results);
               data.results.forEach((product) => {
-                // Render each product as a simple div element
+                // Render each product as a simple div element.
                 const prodDiv = document.createElement("div");
                 prodDiv.className = "product";
                 prodDiv.innerHTML = `
-                <h4>${product.name}</h4>
-                <p>Price: $${product.price}</p>
-                <p>Condition: ${product.condition}</p>
-                <p>${product.description.substring(0, 100)}...</p>
-              `;
+                  <h4>${product.name}</h4>
+                  <p>Price: $${product.price}</p>
+                  <p>Condition: ${product.condition}</p>
+                  <p>${product.description.substring(0, 100)}...</p>
+                `;
                 productList.appendChild(prodDiv);
               });
-              // Optionally, show price range info
+              // Optionally, display the price range.
               if (data.price_range) {
                 const priceRange = document.createElement("div");
                 priceRange.innerHTML = `<small>Prices: $${data.price_range.min_price} - $${data.price_range.max_price}</small>`;
@@ -224,12 +262,29 @@
           .catch((error) => console.error("Error fetching products:", error));
       }
 
-      // Attach event listener to the Apply Filters button
+      // Debounce function for search inputs.
+      function debounceFilterProducts() {
+        if (searchDebounceTimer) {
+          clearTimeout(searchDebounceTimer);
+        }
+        searchDebounceTimer = setTimeout(() => {
+          filterProducts();
+          searchDebounceTimer = null;
+        }, DEBOUNCE_DELAY);
+      }
+
+      // Attach event listeners.
       document
         .getElementById("apply-filters")
         .addEventListener("click", filterProducts);
+      document
+        .getElementById("search_query")
+        .addEventListener("input", debounceFilterProducts);
+      document
+        .querySelectorAll('input[name="mode"]')
+        .forEach((input) => input.addEventListener("change", filterProducts));
 
-      // Initial loading of categories and all products
+      // Initial loading of categories and products.
       window.addEventListener("DOMContentLoaded", () => {
         loadParentCategories();
         filterProducts();
