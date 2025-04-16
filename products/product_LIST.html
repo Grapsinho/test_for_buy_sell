@@ -236,6 +236,7 @@
             const productList = document.getElementById("product-list");
             productList.innerHTML = "";
             if (data.results && data.results.length > 0) {
+              console.log(data.results);
               data.results.forEach((product) => {
                 // Render each product as a simple div element.
                 const prodDiv = document.createElement("div");
@@ -245,6 +246,8 @@
                   <p>Price: $${product.price}</p>
                   <p>Condition: ${product.condition}</p>
                   <p>${product.description.substring(0, 100)}...</p>
+
+                  <img src="${product.images[0].image}" >
                 `;
                 productList.appendChild(prodDiv);
               });
