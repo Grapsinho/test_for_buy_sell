@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Checkout</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f9f9f9;
+        margin: 0;
+        padding: 2rem;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background: #fff;
+        padding: 2rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+      }
+      .section {
+        margin-bottom: 1.5rem;
+      }
+      h1,
+      h2 {
+        color: #333;
+      }
+      label {
+        display: block;
+        margin: 0.5rem 0;
+      }
+      input,
+      select,
+      button {
+        width: 100%;
+        padding: 0.75rem;
+        margin-top: 0.25rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      button {
+        background: #4caf50;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 1rem;
+      }
+      button[disabled] {
+        background: #9e9e9e;
+        cursor: not-allowed;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 0.75rem;
+        text-align: left;
+      }
+      th {
+        background: #f4f4f4;
+      }
+      .error {
+        color: red;
+        margin-top: 1rem;
+      }
+      .spinner {
+        display: none;
+        margin: 1rem auto;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #4caf50;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Checkout</h1>
+      <div class="section">
+        <h2>Cart</h2>
+        <table id="cart-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Qty</th>
+              <th>Price</th>
+              <th>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colspan="4">Loading…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section">
+        <h2>Shipping Method</h2>
+        <label
+          ><input type="radio" name="method" value="1" checked /> Pick-up</label
+        >
+        <label
+          ><input type="radio" name="method" value="2" /> City Delivery</label
+        >
+        <label
+          ><input type="radio" name="method" value="3" /> Regional
+          Delivery</label
+        >
+      </div>
+      <div class="section" id="address-section" style="display: none">
+        <h2>Shipping Address</h2>
+        <label
+          >Street<input type="text" id="street" placeholder="123 Main St"
+        /></label>
+        <label>City<input type="text" id="city" placeholder="City" /></label>
+        <label
+          >Region<input type="text" id="region" placeholder="State/Province"
+        /></label>
+        <label
+          >Postal Code<input
+            type="text"
+            id="postal_code"
+            placeholder="Postal Code"
+        /></label>
+      </div>
+      <button id="submit-btn">Place Order</button>
+      <div class="spinner" id="spinner"></div>
+      <div class="error" id="error-msg"></div>
+    </div>
+    <script>
+      const BASE_URL = "http://127.0.0.1:8000";
+
+      async function initCart() {
+        const res = await fetch(`${BASE_URL}/cart/cart-items/`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to load cart");
+        const data = await res.json();
+        return data.items.map((ci) => ({
+          name: ci.name,
+          quantity: ci.quantity,
+          price: parseFloat(ci.unit_price),
+        }));
+      }
+
+      async function initAddress() {
+        try {
+          const res = await fetch(`${BASE_URL}/user/orders/default-address/`, {
+            credentials: "include",
+          });
+          if (res.statusText != "No Content") return res.json();
+        } catch (_) {}
+        return null;
+      }
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        const cartBody = document.querySelector("#cart-table tbody");
+        const methodInputs = document.querySelectorAll("input[name=method]");
+        const addressSection = document.getElementById("address-section");
+        const submitBtn = document.getElementById("submit-btn");
+        const spinner = document.getElementById("spinner");
+        const errorMsg = document.getElementById("error-msg");
+
+        // Load cart
+        try {
+          const cart = await initCart();
+          cartBody.innerHTML = "";
+          let total = 0;
+          cart.forEach((item) => {
+            const sub = item.quantity * item.price;
+            total += sub;
+            cartBody.insertAdjacentHTML(
+              "beforeend",
+              `<tr><td>${item.name}</td><td>${
+                item.quantity
+              }</td><td>$${item.price.toFixed(2)}</td><td>$${sub.toFixed(
+                2
+              )}</td></tr>`
+            );
+          });
+          cartBody.insertAdjacentHTML(
+            "beforeend",
+            `<tr><td colspan="3"><strong>Total</strong></td><td><strong>$${total.toFixed(
+              2
+            )}</strong></td></tr>`
+          );
+        } catch (err) {
+          cartBody.innerHTML = `<tr><td colspan="4">${err.message}</td></tr>`;
+          return;
+        }
+
+        // Shipping method toggle
+        methodInputs.forEach((r) =>
+          r.addEventListener("change", () => {
+            addressSection.style.display =
+              r.value === "pickup" ? "none" : "block";
+          })
+        );
+
+        // Prefill address
+        const addr = await initAddress();
+        if (addr) {
+          ["street", "city", "region", "postal_code"].forEach(
+            (f) => (document.getElementById(f).value = addr[f] || "")
+          );
+        }
+
+        // Submit checkout
+        submitBtn.addEventListener("click", async () => {
+          errorMsg.textContent = "";
+          submitBtn.disabled = true;
+          spinner.style.display = "block";
+
+          const methodId = document.querySelector(
+            "input[name=method]:checked"
+          ).value;
+          console.log(methodId);
+          const payload = { shipping_method: parseInt(methodId, 10) };
+          if (methodId !== "pickup") {
+            payload.address = {
+              street: document.getElementById("street").value,
+              city: document.getElementById("city").value,
+              region: document.getElementById("region").value,
+              postal_code: document.getElementById("postal_code").value,
+            };
+          }
+
+          console.log(payload);
+
+          try {
+            const res = await fetch(`${BASE_URL}/user/orders/checkout/`, {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json().catch(() => null);
+            console.log(data);
+            if (!res.ok) throw new Error(data?.detail || "Checkout failed");
+            window.location.href = "dashboard.html";
+          } catch (err) {
+            console.log(err);
+            errorMsg.textContent = err.message;
+          } finally {
+            spinner.style.display = "none";
+            submitBtn.disabled = false;
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

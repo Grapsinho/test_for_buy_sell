@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>JWT Auth Test (Email Login)</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2em;
+      }
+      section {
+        margin-bottom: 2em;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 1em;
+      }
+      label {
+        display: block;
+        margin-top: 1em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>JWT Authentication Test</h1>
+
+    <!-- Login Section -->
+    <section>
+      <h2>Login</h2>
+      <form id="loginForm">
+        <label>
+          Email:
+          <input type="email" id="loginEmail" name="email" required />
+        </label>
+        <label>
+          Password:
+          <input type="password" id="loginPassword" name="password" required />
+        </label>
+        <button type="submit">Login</button>
+      </form>
+      <h3>Login Result:</h3>
+      <pre id="loginResult"></pre>
+    </section>
+
+    <h3>Access Protected Route</h3>
+    <button onclick="callProtectedEndpoint()">Get Protected Data</button>
+
+    <!-- Refresh Token Section -->
+    <section>
+      <h2>Refresh Access Token</h2>
+      <button id="refreshBtn">Refresh Token</button>
+      <h3>Refresh Response:</h3>
+      <pre id="refreshResult"></pre>
+    </section>
+
+    <!-- Logout Section -->
+    <section>
+      <h2>Logout</h2>
+      <button id="logoutBtn">Logout</button>
+      <h3>Logout Response:</h3>
+      <pre id="logoutResult"></pre>
+    </section>
+
+    <script>
+      // Login Form Handler
+      document
+        .getElementById("loginForm")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+          const email = document.getElementById("loginEmail").value;
+          const password = document.getElementById("loginPassword").value;
+
+          try {
+            const response = await fetch(
+              "https://buy-sell-ecommerce.onrender.com/users/auth/login/",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include", // ensures that cookies are included in the request
+                body: JSON.stringify({ email, password }),
+              }
+            );
+            const data = await response.json();
+            document.getElementById("loginResult").textContent = JSON.stringify(
+              data,
+              null,
+              2
+            );
+          } catch (error) {
+            document.getElementById("loginResult").textContent =
+              "Error: " + error;
+          }
+        });
+
+      // Refresh Token Handler
+      document
+        .getElementById("refreshBtn")
+        .addEventListener("click", async function () {
+          try {
+            // The refresh endpoint will use the refresh token stored in an HTTP-only cookie if available.
+            const response = await fetch(
+              "https://buy-sell-ecommerce.onrender.com/users/token/refresh/",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+              }
+            );
+            const data = await response.json();
+            document.getElementById("refreshResult").textContent =
+              JSON.stringify(data, null, 2);
+          } catch (error) {
+            document.getElementById("refreshResult").textContent =
+              "Error: " + error;
+          }
+        });
+
+      // Logout Handler
+      document
+        .getElementById("logoutBtn")
+        .addEventListener("click", async function () {
+          try {
+            // In our LogoutUser view, the refresh token is expected in the request body.
+            // If you are storing it in a cookie and your view reads from there, adjust accordingly.
+            // Here we assume that the logout view will extract the refresh token from the request body.
+            const response = await fetch(
+              "https://buy-sell-ecommerce.onrender.com/users/auth/logout/",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+              }
+            );
+            const data = await response.json();
+            document.getElementById("logoutResult").textContent =
+              JSON.stringify(data, null, 2);
+          } catch (error) {
+            document.getElementById("logoutResult").textContent =
+              "Error: " + error;
+          }
+        });
+
+      async function callProtectedEndpoint() {
+        try {
+          const response = await fetch(
+            `https://buy-sell-ecommerce.onrender.com/dashboard/me/`,
+            {
+              method: "GET",
+              credentials: "include", // Include cookies to authenticate the request.
+            }
+          );
+
+          const data = await response.json();
+
+          if (response.ok) {
+            console.log("Protected endpoint data:", data);
+          } else {
+            console.error("Error accessing protected endpoint:", data);
+          }
+        } catch (error) {
+          console.error("Error during fetch:", error);
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Authentication Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .log {
+        border: 1px solid #ccc;
+        padding: 10px;
+        height: 200px;
+        overflow-y: scroll;
+        margin-top: 10px;
+      }
+      label {
+        display: block;
+        margin-top: 10px;
+      }
+      input {
+        padding: 5px;
+      }
+      button {
+        margin-top: 10px;
+        padding: 5px 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>User Authentication Test</h1>
+
+    <!-- Login Form -->
+    <div id="login-section">
+      <h2>Login</h2>
+      <label
+        >Email:
+        <input type="email" id="email" placeholder="Enter your email" />
+      </label>
+      <label
+        >Password:
+        <input
+          type="password"
+          id="password"
+          placeholder="Enter your password"
+        />
+      </label>
+      <button id="loginBtn">Login</button>
+    </div>
+
+    <!-- Actions -->
+    <div id="actions" style="display: none">
+      <h2>Actions</h2>
+      <button id="protectedBtn">Call Protected Endpoint</button>
+      <button id="logoutBtn">Logout</button>
+    </div>
+
+    <!-- Log Output -->
+    <div class="log" id="log"></div>
+
+    <script>
+      const API_ENDPOINT = "http://127.0.0.1:8000";
+
+      // Utility to log messages on the page
+      function logMessage(message) {
+        const logDiv = document.getElementById("log");
+        const p = document.createElement("p");
+        p.textContent = message;
+        logDiv.appendChild(p);
+        logDiv.scrollTop = logDiv.scrollHeight;
+      }
+
+      // Helper function to perform fetch requests with credentials (cookies)
+      async function apiRequest(url, options = {}) {
+        options.credentials = "include"; // Ensure cookies are sent
+
+        let response = await fetch(url, options);
+
+        console.log(response);
+
+        // Handle 401 errors (Unauthorized)
+        if (response.status === 403) {
+          const errorData = await response.json();
+
+          if (errorData.code === "token_expired") {
+            logMessage("Access token expired. Attempting to refresh...");
+            const refreshSuccess = await refreshAccessToken();
+            if (refreshSuccess) {
+              // Retry the original request after a successful refresh
+              response = await fetch(url, options);
+            }
+          } else if (errorData.code === "invalid_token") {
+            logMessage("Session expired. Logging out...");
+            await logout(); // Log out the user
+            return response;
+          }
+        }
+
+        return response;
+      }
+
+      // Login function: Calls the login API and expects the backend to set HTTP-only cookies.
+      async function login() {
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+
+        try {
+          const response = await fetch(`${API_ENDPOINT}/users/auth/login/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include", // Ensures cookies are set
+            body: JSON.stringify({ email, password }),
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            logMessage("Login successful.");
+            document.getElementById("actions").style.display = "block";
+          } else {
+            logMessage(
+              "Login failed: " + (data.detail || JSON.stringify(data))
+            );
+          }
+        } catch (error) {
+          logMessage("Error during login: " + error);
+        }
+      }
+
+      // Automatically refresh the access token using the refresh token in the HTTP-only cookie.
+      async function refreshAccessToken() {
+        try {
+          const response = await fetch(`${API_ENDPOINT}/users/token/refresh/`, {
+            method: "POST",
+            credentials: "include",
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            logMessage("Token refreshed successfully.");
+            return true;
+          } else {
+            logMessage(
+              "Token refresh failed: " + (data.message || JSON.stringify(data))
+            );
+            await logout(); // Log out the user if refresh fails
+            return false;
+          }
+        } catch (error) {
+          logMessage("Error during token refresh: " + error);
+          await logout();
+          return false;
+        }
+      }
+
+      // Call a protected API endpoint that requires authentication.
+      async function callProtected() {
+        try {
+          const response = await apiRequest(
+            `${API_ENDPOINT}/users/profile/4da8dc01-58dd-4403-9af4-85ae7536ec5e/`,
+            {
+              method: "GET",
+              credentials: "include",
+            }
+          );
+
+          const data = await response.json();
+          if (response.ok) {
+            console.log(data);
+            logMessage("Protected data: " + JSON.stringify(data));
+          } else {
+            logMessage(
+              "Protected request failed: " +
+                (data.message || JSON.stringify(data))
+            );
+          }
+        } catch (error) {
+          logMessage("Error calling protected endpoint: " + error);
+        }
+      }
+
+      // Logout function: Clears tokens on the server and client.
+      async function logout() {
+        try {
+          const response = await fetch(`${API_ENDPOINT}/users/auth/logout/`, {
+            method: "POST",
+            credentials: "include",
+          });
+
+          const data = await response.json();
+          if (response.ok) {
+            logMessage("Logout successful.");
+            document.getElementById("actions").style.display = "none"; // Hide actions
+          } else {
+            logMessage(
+              "Logout failed: " + (data.error || JSON.stringify(data))
+            );
+          }
+        } catch (error) {
+          logMessage("Error during logout: " + error);
+        }
+      }
+
+      // Event listeners for UI buttons
+      document.getElementById("loginBtn").addEventListener("click", login);
+      document
+        .getElementById("protectedBtn")
+        .addEventListener("click", callProtected);
+      document.getElementById("logoutBtn").addEventListener("click", logout);
+    </script>
+  </body>
+</html>

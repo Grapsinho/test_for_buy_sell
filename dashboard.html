@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Order Detail</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f9f9f9;
+        margin: 0;
+        padding: 2rem;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background: #fff;
+        padding: 2rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      .bar {
+        background: #eee;
+        border-radius: 10px;
+        overflow: hidden;
+        height: 20px;
+      }
+      .bar-inner {
+        background: #4caf50;
+        width: 0;
+        height: 100%;
+        transition: width 1s ease;
+      }
+      .milestones {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        color: #555;
+      }
+      .loader,
+      .error {
+        text-align: center;
+        margin-top: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1 id="order-title">Order Detail</h1>
+      <div id="loader" class="loader">Loading…</div>
+      <div id="error-msg" class="error"></div>
+      <div id="detail-content" style="display: none">
+        <div>Total: $<span id="total-amount"></span></div>
+        <div class="bar"><div class="bar-inner" id="bar-inner"></div></div>
+        <div class="milestones" id="milestones"></div>
+      </div>
+    </div>
+    <script>
+      const BASE = "https://buy-sell-ecommerce.onrender.com";
+      const params = new URLSearchParams(window.location.search);
+      const orderId = params.get("id");
+      document.addEventListener("DOMContentLoaded", async () => {
+        const loader = document.getElementById("loader");
+        const errorMsg = document.getElementById("error-msg");
+        const content = document.getElementById("detail-content");
+        if (!orderId) {
+          loader.style.display = "none";
+          errorMsg.textContent = "No order ID provided";
+          return;
+        }
+        try {
+          const res = await fetch(`${BASE}/orders/${orderId}/`, {
+            credentials: "include",
+          });
+          if (!res.ok) throw new Error(`Status ${res.status}`);
+          const order = await res.json();
+          loader.style.display = "none";
+          content.style.display = "block";
+          document.getElementById(
+            "order-title"
+          ).textContent = `Order ${order.id}`;
+          document.getElementById("total-amount").textContent = parseFloat(
+            order.total_amount
+          ).toFixed(2);
+
+          // render milestones
+          const ms = document.getElementById("milestones");
+          ms.innerHTML = order.milestones
+            .map(
+              (m) =>
+                `<div>${m.name}<br><small>${new Date(
+                  m.time
+                ).toLocaleString()}</small></div>`
+            )
+            .join("");
+
+          // animate bar
+          setTimeout(() => {
+            const pct = (order.progress || 0).toFixed(1);
+            document.getElementById("bar-inner").style.width = pct + "%";
+          }, 100);
+        } catch (err) {
+          loader.style.display = "none";
+          errorMsg.textContent = "Error loading order detail: " + err.message;
+        }
+      });
+    </script>
+  </body>
+</html>
